@@ -1,12 +1,11 @@
-//test2
 #include <bang.h>
 #include <torch/extension.h>
 #include <cnrt.h>
 
 #define CHUNK_SIZE 4096
 
-__mlu_entry__ void leakyrelu_kernel(float *input, float *output, int total, float negative_slope) {
-    // 多核拆分参数
+__mlu_entry__ void leakyrelu_kernel(const float *input, float *output, int total, float negative_slope) {
+    // 按 taskId 将一维元素区间均匀切分到多个 MLU core。
     uint32_t core_id = taskId;
     uint32_t core_num = taskDim;
     uint32_t per_core = total / core_num;
@@ -14,55 +13,48 @@ __mlu_entry__ void leakyrelu_kernel(float *input, float *output, int total, floa
     uint32_t start = core_id * per_core + (core_id < remainder ? core_id : remainder);
     uint32_t count = per_core + (core_id < remainder ? 1 : 0);
 
-    // NRAM 空间分配
+    // NRAM 中分块计算，避免一次性搬运超出片上存储容量。
     __nram__ float nram_input[CHUNK_SIZE];
     __nram__ float nram_relu[CHUNK_SIZE];
     __nram__ float nram_temp[CHUNK_SIZE];
 
     for (uint32_t offset = 0; offset < count; offset += CHUNK_SIZE) {
         uint32_t len = (offset + CHUNK_SIZE <= count) ? CHUNK_SIZE : (count - offset);
-        // Bang C 向量指令要求长度对齐到 64 个 float (256 字节)
+        // BangC 向量指令按 64 个 float 对齐，写回时只写真实有效长度。
         uint32_t aligned_len = (len + 63) & ~63;
 
-        // 从 GDRAM 加载数据到 NRAM
         __memcpy(nram_input, input + start + offset, len * sizeof(float), GDRAM2NRAM);
 
-        // 1. 计算 relu(x) = max(0, x)
+        // LeakyReLU(x) = relu(x) + negative_slope * (x - relu(x))。
         __bang_active_relu(nram_relu, nram_input, aligned_len);
-
-        // 2. 计算 min(0, x) = x - relu(x)
         __bang_sub(nram_temp, nram_input, nram_relu, aligned_len);
-
-        // 3. 计算 negative_slope * min(0, x)
         __bang_mul_scalar(nram_temp, nram_temp, negative_slope, aligned_len);
-
-        // 4. 计算 leaky_relu(x) = relu(x) + negative_slope * min(0, x)
         __bang_add(nram_temp, nram_relu, nram_temp, aligned_len);
 
-        // 写回 GDRAM（只写有效长度）
         __memcpy(output + start + offset, nram_temp, len * sizeof(float), NRAM2GDRAM);
     }
 }
 
-torch::Tensor bang_func(torch::Tensor input, double negative_slope) {
-    TORCH_CHECK(input.is_contiguous(), "Input must be contiguous");
-
+torch::Tensor bang_func(torch::Tensor x, double negative_slope) {
+    auto input = x.contiguous();
     auto output = torch::empty_like(input);
-    int total = input.numel();
 
-    // 获取 MLU 队列
+    int total = input.numel();
+    if (total == 0) {
+        return output;
+    }
+
     cnrtQueue_t queue = torch_mlu::getCurMLUStream();
 
-    // 配置任务维度（使用 4 个 core）
+    // 使用 Union1 启动 4 个任务，覆盖题目给定的 [batch, dim] 线性张量。
     cnrtDim3_t dim = {4, 1, 1};
     cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
 
-    // 启动 kernel
     leakyrelu_kernel<<<dim, ktype, queue>>>(
         input.data_ptr<float>(),
         output.data_ptr<float>(),
         total,
-        negative_slope
+        static_cast<float>(negative_slope)
     );
 
     return output;
