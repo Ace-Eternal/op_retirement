@@ -137,3 +137,30 @@
 056
 109
 ```
+
+## Basic 第五批验证
+
+本批完成题目：
+
+- `005_average_pooling_2d`：`average_pooling_2d.mlu`
+- `009_conv_standard_1D`：`conv_standard_1D.mlu`
+- `111_Masked_select`：`Masked_select.mlu`
+
+实验服务器复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 005 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 005 | `torch.float32` | 最大误差 `0.0` | 通过 |
+| 009 | `torch.float16` | 输出为 float32，最大误差 `9.5367431640625e-07` | 通过 |
+| 009 | `torch.float32` | 最大误差 `9.5367431640625e-07` | 通过 |
+| 111 | `torch.float16` | shape 一致，最大误差 `0.0` | 通过 |
+| 111 | `torch.float32` | shape 一致，最大误差 `0.0` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+005
+009
+111
+```

@@ -1,0 +1,71 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void avgpool2d_half_kernel(const half *input, half *output, int n, int c, int h, int w, int k, int out_h, int out_w) {
+    int total = n * c * out_h * out_w;
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        int ow = idx % out_w;
+        int t = idx / out_w;
+        int oh = t % out_h;
+        t /= out_h;
+        int ch = t % c;
+        int b = t / c;
+        float sum = 0.0f;
+        int in_base = ((b * c + ch) * h + oh * k) * w + ow * k;
+        for (int kh = 0; kh < k; ++kh) {
+            for (int kw = 0; kw < k; ++kw) {
+                sum += (float)input[in_base + kh * w + kw];
+            }
+        }
+        output[idx] = (half)(sum / (float)(k * k));
+    }
+}
+
+__mlu_entry__ void avgpool2d_float_kernel(const float *input, float *output, int n, int c, int h, int w, int k, int out_h, int out_w) {
+    int total = n * c * out_h * out_w;
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        int ow = idx % out_w;
+        int t = idx / out_w;
+        int oh = t % out_h;
+        t /= out_h;
+        int ch = t % c;
+        int b = t / c;
+        float sum = 0.0f;
+        int in_base = ((b * c + ch) * h + oh * k) * w + ow * k;
+        for (int kh = 0; kh < k; ++kh) {
+            for (int kw = 0; kw < k; ++kw) {
+                sum += input[in_base + kh * w + kw];
+            }
+        }
+        output[idx] = sum / (float)(k * k);
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, int kernel_size) {
+    auto input = x.contiguous();
+    TORCH_CHECK(input.dim() == 4, "average_pooling_2d expects [N,C,H,W]");
+    int n = input.size(0), c = input.size(1), h = input.size(2), w = input.size(3);
+    int out_h = (h - kernel_size) / kernel_size + 1;
+    int out_w = (w - kernel_size) / kernel_size + 1;
+    auto output = torch::empty({n, c, out_h, out_w}, input.options());
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {256, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        avgpool2d_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            n, c, h, w, kernel_size, out_h, out_w);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "average_pooling_2d only supports float16 and float32");
+        avgpool2d_float_kernel<<<task_dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            output.data_ptr<float>(),
+            n, c, h, w, kernel_size, out_h, out_w);
+    }
+    return output;
+}

@@ -180,6 +180,47 @@ cnrtInvokeKernel: Launch kernel failed.
 | 109 | `torch.float16` | 输出为 float32，最大误差 `0.0` | 通过 |
 | 109 | `torch.float32` | 最大误差 `0.0` | 通过 |
 
+## Basic 第五批本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 005 | average_pooling_2d | 待提交 | 通过 | 未提交无评论 | 待提交 |
+| 009 | conv_standard_1D | 待提交 | 通过 | 未提交无评论 | 待提交 |
+| 111 | Masked_select | 待提交 | 通过 | 未提交无评论 | 待提交 |
+
+实验服务器复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 005 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 005 | `torch.float32` | 最大误差 `0.0` | 通过 |
+| 009 | `torch.float16` | 输出为 float32，最大误差 `9.5367431640625e-07` | 通过 |
+| 009 | `torch.float32` | 最大误差 `9.5367431640625e-07` | 通过 |
+| 111 | `torch.float16` | shape 一致，最大误差 `0.0` | 通过 |
+| 111 | `torch.float32` | shape 一致，最大误差 `0.0` | 通过 |
+
+## 43a4d81 - Basic 第四批
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
+- config: `039,056,109`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 039 | BatchNorm | 通过 | 远程评测 | score `0.0019665160501577757`，diff `0.0019540786743164062`，latency `2711699.2 us` |
+| 056 | gather | 通过 | 远程评测 | score `1.8259259259259257`，diff `0.009765625`，latency `54.0 us` |
+| 109 | Scatter_add | 通过 | 远程评测 | score `8.470761994514519e-05`，diff `2.384185791015625e-07`，latency `828733.0 us` |
+
+### 远程评测报告摘要
+
+```text
+| `039_BatchNorm` | 0.002 | PASS (diff=1.95e-03) | 2711699.200 us | ✅ |
+| `056_gather` | 1.826 | PASS (diff=9.77e-03) | 54.000 us | ✅ |
+| `109_Scatter_add` | 0.000 | PASS (diff=2.38e-07) | 828733.000 us | ✅ |
+
+汇总: 提交3题，通过3题
+```
+
 ## f9ccaec - Basic 第二批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/f9ccaec54ed3f58878c5033b4c4b87942d179fdd

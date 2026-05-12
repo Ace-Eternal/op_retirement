@@ -1,0 +1,75 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void conv1d_half_kernel(const half *x, const half *kernel, float *output, int batch, int in_c, int out_c, int length, int ksize, int stride, int padding, int dilation, int out_len) {
+    int total = batch * out_c * out_len;
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        int pos = idx % out_len;
+        int t = idx / out_len;
+        int oc = t % out_c;
+        int b = t / out_c;
+        float sum = 0.0f;
+        for (int ic = 0; ic < in_c; ++ic) {
+            for (int kk = 0; kk < ksize; ++kk) {
+                int in_pos = pos * stride - padding + kk * dilation;
+                if (in_pos >= 0 && in_pos < length) {
+                    sum += (float)x[(b * in_c + ic) * length + in_pos] * (float)kernel[(oc * in_c + ic) * ksize + kk];
+                }
+            }
+        }
+        output[idx] = sum;
+    }
+}
+
+__mlu_entry__ void conv1d_float_kernel(const float *x, const float *kernel, float *output, int batch, int in_c, int out_c, int length, int ksize, int stride, int padding, int dilation, int out_len) {
+    int total = batch * out_c * out_len;
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        int pos = idx % out_len;
+        int t = idx / out_len;
+        int oc = t % out_c;
+        int b = t / out_c;
+        float sum = 0.0f;
+        for (int ic = 0; ic < in_c; ++ic) {
+            for (int kk = 0; kk < ksize; ++kk) {
+                int in_pos = pos * stride - padding + kk * dilation;
+                if (in_pos >= 0 && in_pos < length) {
+                    sum += x[(b * in_c + ic) * length + in_pos] * kernel[(oc * in_c + ic) * ksize + kk];
+                }
+            }
+        }
+        output[idx] = sum;
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, torch::Tensor kernel, int in_channels, int out_channels, int kernel_size, int stride, int padding, int dilation, int groups, int bias) {
+    TORCH_CHECK(groups == 1 && bias == 0, "conv_standard_1D basic task expects groups=1 and bias=false");
+    auto input = x.contiguous();
+    auto weight = kernel.contiguous();
+    int batch = input.size(0);
+    int length = input.size(2);
+    int out_len = (length + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1;
+    auto options = input.scalar_type() == at::ScalarType::Half ? input.options().dtype(torch::kFloat) : input.options();
+    auto output = torch::empty({batch, out_channels, out_len}, options);
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {256, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        conv1d_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            reinterpret_cast<const half *>(weight.data_ptr<at::Half>()),
+            output.data_ptr<float>(),
+            batch, in_channels, out_channels, length, kernel_size, stride, padding, dilation, out_len);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "conv_standard_1D only supports float16 and float32");
+        conv1d_float_kernel<<<task_dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            weight.data_ptr<float>(),
+            output.data_ptr<float>(),
+            batch, in_channels, out_channels, length, kernel_size, stride, padding, dilation, out_len);
+    }
+    return output;
+}

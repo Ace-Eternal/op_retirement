@@ -1,0 +1,87 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void count_half_kernel(const half *input, int32_t *count, int total, float threshold) {
+    if (taskId != 0) return;
+    int32_t local = 0;
+    for (int i = 0; i < total; ++i) {
+        if ((float)input[i] > threshold) ++local;
+    }
+    count[0] = local;
+}
+
+__mlu_entry__ void count_float_kernel(const float *input, int32_t *count, int total, float threshold) {
+    if (taskId != 0) return;
+    int32_t local = 0;
+    for (int i = 0; i < total; ++i) {
+        if (input[i] > threshold) ++local;
+    }
+    count[0] = local;
+}
+
+__mlu_entry__ void select_half_kernel(const half *input, half *output, int total, float threshold) {
+    if (taskId != 0) return;
+    int out = 0;
+    for (int i = 0; i < total; ++i) {
+        if ((float)input[i] > threshold) {
+            output[out++] = input[i];
+        }
+    }
+}
+
+__mlu_entry__ void select_float_kernel(const float *input, float *output, int total, float threshold) {
+    if (taskId != 0) return;
+    int out = 0;
+    for (int i = 0; i < total; ++i) {
+        if (input[i] > threshold) {
+            output[out++] = input[i];
+        }
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor input, double threshold) {
+    auto x = input.contiguous();
+    int total = x.numel();
+    auto count_tensor = torch::empty({1}, x.options().dtype(torch::kInt32));
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {4, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+    float th = static_cast<float>(threshold);
+
+    if (x.scalar_type() == at::ScalarType::Half) {
+        count_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(x.data_ptr<at::Half>()),
+            count_tensor.data_ptr<int32_t>(),
+            total,
+            th);
+    } else {
+        TORCH_CHECK(x.scalar_type() == at::ScalarType::Float, "Masked_select only supports float16 and float32");
+        count_float_kernel<<<task_dim, ktype, queue>>>(
+            x.data_ptr<float>(),
+            count_tensor.data_ptr<int32_t>(),
+            total,
+            th);
+    }
+
+    int32_t host_count = 0;
+    cnrtQueueSync(queue);
+    cnrtMemcpy(&host_count, count_tensor.data_ptr<int32_t>(), sizeof(int32_t), cnrtMemcpyDevToHost);
+    auto output = torch::empty({host_count}, x.options());
+
+    if (x.scalar_type() == at::ScalarType::Half) {
+        select_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(x.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            total,
+            th);
+    } else {
+        select_float_kernel<<<task_dim, ktype, queue>>>(
+            x.data_ptr<float>(),
+            output.data_ptr<float>(),
+            total,
+            th);
+    }
+    return output;
+}
