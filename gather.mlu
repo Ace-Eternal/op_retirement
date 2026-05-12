@@ -1,0 +1,52 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void gather_half_kernel(const half *x, const int32_t *indices, const int32_t *bin_ids, const half *weights, const int32_t *bins, half *output, int tokens, int hidden, int elements, int top_k) {
+    if (taskId != 0) {
+        return;
+    }
+    int out_rows = tokens * top_k;
+    for (int i = 0; i < out_rows * hidden; ++i) {
+        output[i] = (half)0.0f;
+    }
+    for (int pid = 0; pid < elements; ++pid) {
+        int bin_id = bin_ids[pid];
+        int bin_start = (bin_id == 0) ? 0 : bins[bin_id - 1];
+        int index_b = (pid - bin_start) + bin_start;
+        int src_row = indices[pid] / top_k;
+        float scale = (float)weights[indices[pid]];
+        for (int h = 0; h < hidden; ++h) {
+            output[index_b * hidden + h] = (half)((float)x[src_row * hidden + h] * scale);
+        }
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, torch::Tensor indices, torch::Tensor bin_ids, torch::Tensor weights, torch::Tensor bins, int top_k) {
+    auto input = x.contiguous();
+    auto idx = indices.contiguous();
+    auto bid = bin_ids.contiguous();
+    auto wgt = weights.contiguous();
+    auto bns = bins.contiguous();
+    TORCH_CHECK(input.scalar_type() == at::ScalarType::Half, "gather basic task expects float16 x");
+    auto output = torch::empty({input.size(0) * top_k, input.size(1)}, input.options());
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {4, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    gather_half_kernel<<<task_dim, ktype, queue>>>(
+        reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+        idx.data_ptr<int32_t>(),
+        bid.data_ptr<int32_t>(),
+        reinterpret_cast<const half *>(wgt.data_ptr<at::Half>()),
+        bns.data_ptr<int32_t>(),
+        reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+        input.size(0),
+        input.size(1),
+        idx.numel(),
+        top_k);
+
+    return output;
+}

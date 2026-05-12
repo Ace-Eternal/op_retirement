@@ -14,6 +14,9 @@
 | 023 | Matrix_vector_multiplication | 已提交于 `f9ccaec` | 小规模通过 | API 已读取 | 失败，待修复 |
 | 103 | MSE_Loss | 已提交于 `f9ccaec` | 通过 | API 已读取 | 通过 |
 | 104 | KL_Divergence_Loss | 已提交于 `f9ccaec` | 通过 | API 已读取 | 通过 |
+| 034 | Argmax_over_a_dimension | 已提交于 `037e7af` | 通过 | API 已读取 | 通过 |
+| 051 | cumsum | 已提交于 `037e7af` | 小规模通过 | API 已读取 | 失败，待修复 |
+| 075 | TopK | 已提交于 `037e7af` | 通过 | API 已读取 | 通过 |
 
 ## 04c41ea - Task 001 修复提交
 
@@ -128,6 +131,54 @@ cnrtInvokeKernel: Launch kernel failed.
 | 051 | `torch.float32` | 最大误差 `0.00031280517578125` | 通过 |
 | 075 | `torch.float16` | values 最大误差 `0.0`，indices 完全一致 | 通过 |
 | 075 | `torch.float32` | values 最大误差 `0.0`，indices 完全一致 | 通过 |
+
+## 037e7af - Basic 第三批
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/037e7af38fbf12c11227988fd86980e3dd0e4754
+- config: `034,051,075`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 034 | Argmax_over_a_dimension | 通过 | 远程评测 | score `0.0023620746613809054`，diff `0.0`，latency `12108.0 us` |
+| 051 | cumsum | 失败 | 远程评测 | score `0.0`，diff `0.0625152587890625`，latency `11949.6 us` |
+| 075 | TopK | 通过 | 远程评测 | score `0.017699115044247787`，diff `0.0`，latency `949.2 us` |
+
+### 远程评测报告摘要
+
+```text
+| `034_Argmax_over_a_dimension` | 0.002 | PASS (diff=0.00e+00) | 12108.000 us | ✅ |
+| `051_cumsum` | 0.000 | FAIL (diff=6.25e-02) | 11949.600 us | ❌ |
+| `075_TopK` | 0.018 | PASS (diff=0.00e+00) | 949.200 us | ✅ |
+
+汇总: 提交3题，通过2题
+```
+
+### 051 失败日志
+
+```text
+@@RESULT@@{"passed": false, "max_abs_diff": 0.0625152587890625, "torch_us": 37.7, "bangc_us": 11949.6, "score": 0.0}
+```
+
+失败原因判断：实验服务器验证使用 `torch.allclose(..., atol=1e-2, rtol=1e-2)`，但远程平台看最大绝对误差，half 路径长序列前缀和累计误差达到 `0.0625`。后续修复应复现全量 half 输入并调整累加/输出策略。
+
+## Basic 第四批本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 039 | BatchNorm | 待提交 | 通过 | 未提交无评论 | 待提交 |
+| 056 | gather | 待提交 | 通过 | 未提交无评论 | 待提交 |
+| 109 | Scatter_add | 待提交 | 通过 | 未提交无评论 | 待提交 |
+
+实验服务器复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 039 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 039 | `torch.float32` | 最大误差 `2.384185791015625e-07` | 通过 |
+| 056 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 109 | `torch.float16` | 输出为 float32，最大误差 `0.0` | 通过 |
+| 109 | `torch.float32` | 最大误差 `0.0` | 通过 |
 
 ## f9ccaec - Basic 第二批
 

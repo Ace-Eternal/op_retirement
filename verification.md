@@ -111,3 +111,29 @@
 051
 075
 ```
+
+## Basic 第四批验证
+
+本批完成题目：
+
+- `039_BatchNorm`：`BatchNorm.mlu`
+- `056_gather`：`gather.mlu`
+- `109_Scatter_add`：`Scatter_add.mlu`
+
+实验服务器复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 039 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 039 | `torch.float32` | 最大误差 `2.384185791015625e-07` | 通过 |
+| 056 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 109 | `torch.float16` | 输出为 float32，最大误差 `0.0` | 通过 |
+| 109 | `torch.float32` | 最大误差 `0.0` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+039
+056
+109
+```

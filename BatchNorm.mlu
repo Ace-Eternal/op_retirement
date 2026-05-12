@@ -1,0 +1,106 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include <math.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void batchnorm2d_half_kernel(const half *input, half *output, int n, int c, int h, int w) {
+    int spatial = h * w;
+    int per_channel = n * spatial;
+    for (int ch = taskId; ch < c; ch += taskDim) {
+        float sum = 0.0f;
+        for (int b = 0; b < n; ++b) {
+            int base = ((b * c + ch) * h) * w;
+            for (int i = 0; i < spatial; ++i) {
+                sum += (float)input[base + i];
+            }
+        }
+        float mean = sum / (float)per_channel;
+
+        float var_sum = 0.0f;
+        for (int b = 0; b < n; ++b) {
+            int base = ((b * c + ch) * h) * w;
+            for (int i = 0; i < spatial; ++i) {
+                float diff = (float)input[base + i] - mean;
+                var_sum += diff * diff;
+            }
+        }
+        float inv_std = 1.0f / sqrtf(var_sum / (float)per_channel + 1.0e-5f);
+
+        for (int b = 0; b < n; ++b) {
+            int base = ((b * c + ch) * h) * w;
+            for (int i = 0; i < spatial; ++i) {
+                output[base + i] = (half)(((float)input[base + i] - mean) * inv_std);
+            }
+        }
+    }
+}
+
+__mlu_entry__ void batchnorm2d_float_kernel(const float *input, float *output, int n, int c, int h, int w) {
+    int spatial = h * w;
+    int per_channel = n * spatial;
+    for (int ch = taskId; ch < c; ch += taskDim) {
+        float sum = 0.0f;
+        for (int b = 0; b < n; ++b) {
+            int base = ((b * c + ch) * h) * w;
+            for (int i = 0; i < spatial; ++i) {
+                sum += input[base + i];
+            }
+        }
+        float mean = sum / (float)per_channel;
+
+        float var_sum = 0.0f;
+        for (int b = 0; b < n; ++b) {
+            int base = ((b * c + ch) * h) * w;
+            for (int i = 0; i < spatial; ++i) {
+                float diff = input[base + i] - mean;
+                var_sum += diff * diff;
+            }
+        }
+        float inv_std = 1.0f / sqrtf(var_sum / (float)per_channel + 1.0e-5f);
+
+        for (int b = 0; b < n; ++b) {
+            int base = ((b * c + ch) * h) * w;
+            for (int i = 0; i < spatial; ++i) {
+                output[base + i] = (input[base + i] - mean) * inv_std;
+            }
+        }
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, int num_features) {
+    auto input = x.contiguous();
+    TORCH_CHECK(input.dim() == 4, "BatchNorm expects [N,C,H,W]");
+    TORCH_CHECK(input.size(1) == num_features, "BatchNorm num_features mismatch");
+    auto output = torch::empty_like(input);
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {64, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    int n = input.size(0);
+    int c = input.size(1);
+    int h = input.size(2);
+    int w = input.size(3);
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        batchnorm2d_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            n,
+            c,
+            h,
+            w);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "BatchNorm only supports float16 and float32");
+        batchnorm2d_float_kernel<<<task_dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            output.data_ptr<float>(),
+            n,
+            c,
+            h,
+            w);
+    }
+
+    return output;
+}
