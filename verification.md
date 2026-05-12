@@ -30,3 +30,30 @@
 - `torch.float32` 输入：最大绝对误差 `0.0`。
 
 本机仍未安装或未暴露 `cncc`/`mlucc`，因此本机无法执行 BangC 编译与 MLU 测试。
+
+## Basic 第一批验证
+
+本批完成题目：
+
+- `002_matrix_scalar_multiplication`：`matrix_scalar_multiplication.mlu`
+- `003_LogSoftmax`：`LogSoftmax.mlu`
+- `070_Sqrt`：`Sqrt.mlu`
+
+实验服务器复测结果：
+
+| 题号 | dtype | 最大绝对误差 | 结论 |
+| --- | --- | --- | --- |
+| 002 | `torch.float16` | `0.001953125` | 通过 |
+| 002 | `torch.float32` | `0.0` | 通过 |
+| 003 | `torch.float16` | `0.0078125` | 通过 |
+| 003 | `torch.float32` | `1.9073486328125e-06` | 通过 |
+| 070 | `torch.float16` | `0.00048828125` | 通过 |
+| 070 | `torch.float32` | `5.960464477539063e-08` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+002
+003
+070
+```

@@ -1,0 +1,78 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+#define CHUNK_SIZE 4096
+
+__mlu_entry__ void sqrt_half_kernel(const half *input, half *output, int total) {
+    uint32_t core_id = taskId;
+    uint32_t core_num = taskDim;
+    uint32_t per_core = total / core_num;
+    uint32_t remainder = total % core_num;
+    uint32_t start = core_id * per_core + (core_id < remainder ? core_id : remainder);
+    uint32_t count = per_core + (core_id < remainder ? 1 : 0);
+
+    __nram__ half nram_input[CHUNK_SIZE];
+    __nram__ float nram_float[CHUNK_SIZE];
+
+    for (uint32_t offset = 0; offset < count; offset += CHUNK_SIZE) {
+        uint32_t len = (offset + CHUNK_SIZE <= count) ? CHUNK_SIZE : (count - offset);
+        uint32_t aligned_len = (len + 127) & ~127;
+
+        __memcpy(nram_input, input + start + offset, len * sizeof(half), GDRAM2NRAM);
+        // half 路径先提升到 float 执行 sqrt，再转回 half。
+        __bang_half2float(nram_float, nram_input, aligned_len);
+        __bang_sqrt(nram_float, nram_float, aligned_len);
+        __bang_float2half_rn(nram_input, nram_float, aligned_len);
+        __memcpy(output + start + offset, nram_input, len * sizeof(half), NRAM2GDRAM);
+    }
+}
+
+__mlu_entry__ void sqrt_float_kernel(const float *input, float *output, int total) {
+    uint32_t core_id = taskId;
+    uint32_t core_num = taskDim;
+    uint32_t per_core = total / core_num;
+    uint32_t remainder = total % core_num;
+    uint32_t start = core_id * per_core + (core_id < remainder ? core_id : remainder);
+    uint32_t count = per_core + (core_id < remainder ? 1 : 0);
+
+    __nram__ float nram_input[CHUNK_SIZE];
+
+    for (uint32_t offset = 0; offset < count; offset += CHUNK_SIZE) {
+        uint32_t len = (offset + CHUNK_SIZE <= count) ? CHUNK_SIZE : (count - offset);
+        uint32_t aligned_len = (len + 63) & ~63;
+
+        __memcpy(nram_input, input + start + offset, len * sizeof(float), GDRAM2NRAM);
+        __bang_sqrt(nram_input, nram_input, aligned_len);
+        __memcpy(output + start + offset, nram_input, len * sizeof(float), NRAM2GDRAM);
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x) {
+    auto input = x.contiguous();
+    auto output = torch::empty_like(input);
+    int total = input.numel();
+    if (total == 0) {
+        return output;
+    }
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t dim = {4, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        sqrt_half_kernel<<<dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            total);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "Sqrt only supports float16 and float32");
+        sqrt_float_kernel<<<dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            output.data_ptr<float>(),
+            total);
+    }
+
+    return output;
+}
