@@ -215,6 +215,14 @@ cnrtInvokeKernel: Launch kernel failed.
 | 012 | `torch.float16` 输入，float32 输出 | 最大误差 `9.5367431640625e-07` | 通过 |
 | 135 | `torch.float16` 输入，float32 输出 | 最大误差 `0.0` | 通过 |
 
+## Basic 第七批本地记录
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 138 | GRU_forward | 待提交 | 仅形状实现 | 未提交无评论 | 待提交，预计失败 |
+
+说明：`problems.json` 中该题参考实现的 `get_init_inputs()` 提供 GRU 权重和 bias，但 `cpp_wrapper` 只有 `torch::Tensor x, int input_size, int hidden_size, int num_layers`，没有权重参数。当前先提交形状正确的零输出版本，等待远程评测日志确认真实接口。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba

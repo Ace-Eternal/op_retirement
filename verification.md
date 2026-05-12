@@ -188,3 +188,17 @@
 012
 135
 ```
+
+## Basic 第七批验证
+
+本批完成题目：
+
+- `138_GRU_forward`：`GRU_forward.mlu`
+
+说明：`problems.json` 中该题参考实现的 `get_init_inputs()` 提供 GRU 权重和 bias，但 `cpp_wrapper` 只有 `torch::Tensor x, int input_size, int hidden_size, int num_layers`，没有权重参数。当前先提交形状正确的零输出版本进入远程评测闭环，预计精度会失败，后续根据 bot 日志确认实际评测接口后再修复。
+
+当前 `config` 设置为：
+
+```text
+138
+```

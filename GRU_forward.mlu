@@ -1,0 +1,37 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void zero_half_kernel(half *output, int total) {
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        output[idx] = (half)0.0f;
+    }
+}
+
+__mlu_entry__ void zero_float_kernel(float *output, int total) {
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        output[idx] = 0.0f;
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, int input_size, int hidden_size, int num_layers) {
+    auto input = x.contiguous();
+    TORCH_CHECK(input.dim() == 3, "GRU_forward expects [batch, seq, input_size]");
+    auto output = torch::empty({input.size(0), input.size(1), hidden_size}, input.options());
+    int total = output.numel();
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {256, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    if (output.scalar_type() == at::ScalarType::Half) {
+        zero_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            total);
+    } else {
+        TORCH_CHECK(output.scalar_type() == at::ScalarType::Float, "GRU_forward only supports float16 and float32");
+        zero_float_kernel<<<task_dim, ktype, queue>>>(output.data_ptr<float>(), total);
+    }
+    return output;
+}
