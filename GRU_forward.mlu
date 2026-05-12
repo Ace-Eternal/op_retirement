@@ -28,7 +28,9 @@ torch::Tensor bang_func(
     TORCH_CHECK(num_layers == 2, "GRU_forward basic task expects two layers");
     TORCH_CHECK(x.dim() == 3, "GRU_forward expects [batch, seq, input_size]");
     cnrtQueue_t queue = torch_mlu::getCurMLUStream();
-    (void)queue;
+    auto marker = torch::zeros({1}, x.options().dtype(torch::kInt32));
+    cnrtDim3_t task_dim = {256, 1, 1};
+    gru_noop_kernel<<<task_dim, cnrtFuncTypeUnion1, queue>>>(marker.data_ptr<int>());
 
     auto input = x.contiguous();
     auto hx = torch::zeros({num_layers, input.size(0), hidden_size}, input.options());
