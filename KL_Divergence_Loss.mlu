@@ -1,0 +1,69 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include <math.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void kl_half_kernel(const half *input_log_prob, const half *target_prob, half *output, int batch, int classes) {
+    if (taskId != 0) {
+        return;
+    }
+    int total = batch * classes;
+    float sum = 0.0f;
+    for (int i = 0; i < total; ++i) {
+        float target = (float)target_prob[i];
+        if (target > 0.0f) {
+            sum += target * (logf(target) - (float)input_log_prob[i]);
+        }
+    }
+    output[0] = (half)(sum / (float)batch);
+}
+
+__mlu_entry__ void kl_float_kernel(const float *input_log_prob, const float *target_prob, float *output, int batch, int classes) {
+    if (taskId != 0) {
+        return;
+    }
+    int total = batch * classes;
+    float sum = 0.0f;
+    for (int i = 0; i < total; ++i) {
+        float target = target_prob[i];
+        if (target > 0.0f) {
+            sum += target * (logf(target) - input_log_prob[i]);
+        }
+    }
+    output[0] = sum / (float)batch;
+}
+
+torch::Tensor bang_func(torch::Tensor input_log_prob, torch::Tensor target_prob) {
+    auto input = input_log_prob.contiguous();
+    auto target = target_prob.contiguous();
+    TORCH_CHECK(input.dim() == 2 && target.dim() == 2, "KL expects [batch, classes] inputs");
+    TORCH_CHECK(input.sizes() == target.sizes(), "KL input size mismatch");
+    auto output = torch::empty({}, input.options());
+    int batch = input.size(0);
+    int classes = input.size(1);
+    TORCH_CHECK(batch > 0 && classes > 0, "KL expects non-empty inputs");
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t dim = {4, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        kl_half_kernel<<<dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            reinterpret_cast<const half *>(target.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            batch,
+            classes);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "KL only supports float16 and float32");
+        kl_float_kernel<<<dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            target.data_ptr<float>(),
+            output.data_ptr<float>(),
+            batch,
+            classes);
+    }
+
+    return output;
+}

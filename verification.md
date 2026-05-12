@@ -57,3 +57,30 @@
 003
 070
 ```
+
+## Basic 第二批验证
+
+本批完成题目：
+
+- `023_Matrix_vector_multiplication_`：`Matrix_vector_multiplication_.mlu`
+- `103_MSE_Loss`：`MSE_Loss.mlu`
+- `104_KL_Divergence_Loss`：`KL_Divergence_Loss.mlu`
+
+实验服务器复测结果：
+
+| 题号 | dtype | 最大误差/绝对误差 | 结论 |
+| --- | --- | --- | --- |
+| 023 | `torch.float16` | `0.0` | 通过 |
+| 023 | `torch.float32` | `0.00011444091796875` | 通过 |
+| 103 | `torch.float16` | `0.0007038116455078125` | 通过 |
+| 103 | `torch.float32` | `0.00030684471130371094` | 通过 |
+| 104 | `torch.float16` | `0.0001233816146850586` | 通过 |
+| 104 | `torch.float32` | `8.761882781982422e-06` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+023
+103
+104
+```

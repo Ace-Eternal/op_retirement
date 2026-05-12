@@ -80,8 +80,11 @@ torch::Tensor bang_func(torch::Tensor x, double negative_slope);
 5. 上传实验服务器，先编译，再跑数值对比。
 6. 确认 `float16` 和 `float32` 输入是否都能运行。
 7. 提交到 GitHub `main` 分支。
-8. 查看 commit 评论日志，若失败，先根据日志在实验服务器复现。
-9. 通过后再查看快捷监控和排行榜。
+8. 间隔2分钟后(因为评测需要时间)轮询读取本次 commit 页面评论，确认远程评测结果。
+9. 将每道题的成功或失败写入结果记录；失败时完整摘录关键错误日志。
+10. 如果当前批次有失败题目，先不要立刻打断批量提交节奏，除非失败会阻塞后续所有题目。
+11. 所有尚未提交的题目都提交并记录结果后，再集中回头修复失败题目。
+12. 通过后再查看快捷监控和排行榜。
 
 常用提交命令：
 
@@ -90,6 +93,79 @@ git add <题目文件.mlu> config verification.md .codex
 git commit -m "implement <OperatorName> bangc operator"
 git push origin main
 ```
+
+### 4.1 push 后读取 commit 评论
+
+每次 push 后必须获取本次 commit 的远程评测评论。commit 页面格式示例：
+
+```text
+https://github.com/Ace-Eternal/op_retirement/commit/88b0b66d34a95fc59a2e94040240a2f4bc5ea946
+```
+
+评论就是该次 push 的评测结果。标准读取方式是 GitHub REST API：
+
+```text
+GET https://api.github.com/repos/Ace-Eternal/op_retirement/commits/<commit_sha>/comments
+```
+
+请求 header：
+
+```text
+Accept: application/vnd.github+json
+User-Agent: Codex
+```
+
+返回结果是 JSON 数组，每个元素是一条 commit comment，关键字段包括：
+
+- `id`
+- `html_url`
+- `user.login`
+- `created_at`
+- `updated_at`
+- `body`
+- `commit_id`
+- `path`
+- `line`
+
+`kernel-competition-bot` 的评测报告在返回元素的 `body` 字段中。仓库和 commit 评论公开可读，通常不需要 token。
+
+PowerShell 示例：
+
+```powershell
+$headers = @{
+  Accept = "application/vnd.github+json"
+  "User-Agent" = "Codex"
+}
+Invoke-RestMethod `
+  -Uri "https://api.github.com/repos/Ace-Eternal/op_retirement/commits/<commit_sha>/comments" `
+  -Headers $headers
+```
+
+可选读取方式：
+
+1. 如本地有 `gh`，可使用 GitHub API 查询：
+
+```bash
+gh api repos/Ace-Eternal/op_retirement/commits/<commit_sha>/comments
+```
+
+2. 如果 API 返回空数组或网页评论尚未出现，等待 1 到 3 分钟后重试；评测繁忙时可适当延长。
+3. 如果 API rate limit exceeded，记录限流信息，稍后重试或改用已认证 GitHub 请求。
+
+读取评论后必须判断：
+
+- 本批次哪些题目通过。
+- 哪些题目失败。
+- 失败发生在编译、加载、运行、精度、超时还是性能异常。
+- 对失败题目记录完整关键日志，包括 stdout/stderr 中的错误片段、题号、commit sha、时间。
+
+批量策略：
+
+- 每完成 3 道题目进行一次 commit 和 push。
+- push 后只做结果记录，不立即展开长期修复。
+- 发现失败时，在 `.codex/eval-results.md` 中标记为待修复。
+- 当所有未提交的 basic 题目都至少提交过一次后，再按失败列表集中修复。
+- 修复失败题目时仍按每 3 道一批 push，并继续读取 commit 评论更新结果。
 
 ## 5. 实验服务器验证流程
 
@@ -200,6 +276,28 @@ output.data_ptr<float>()
 - `.codex/testing.md`：记录本地和远端验证命令及结果。
 - `.codex/operations-log.md`：记录关键决策、失败原因、修复过程。
 - `.codex/review-report.md`：记录审查结论和残余风险。
+- `.codex/eval-results.md`：记录每次 push 后从 commit 评论读取到的远程评测结果。
+
+`.codex/eval-results.md` 建议格式：
+
+```markdown
+## <commit_sha> - <日期时间>
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/<commit_sha>
+- config: 002,003,070
+- 评论状态：已读取 / 未出现 / 读取失败
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 002 | matrix_scalar_multiplication | 通过 | 远程评测 | score/latency 如评论提供则记录 |
+| 003 | LogSoftmax | 失败 | 精度 | max error 超过阈值，详见下方日志 |
+
+### 失败日志
+
+```text
+粘贴关键 stdout/stderr，不需要粘贴无关编译命令全文。
+```
+```
 
 不要在这些文件中写入密码、token、webhook secret 或其他敏感凭据。
 

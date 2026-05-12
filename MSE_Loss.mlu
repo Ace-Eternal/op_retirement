@@ -1,0 +1,58 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void mse_half_kernel(const half *predictions, const half *targets, half *output, int total) {
+    if (taskId != 0) {
+        return;
+    }
+    float sum = 0.0f;
+    for (int i = 0; i < total; ++i) {
+        float diff = (float)predictions[i] - (float)targets[i];
+        sum += diff * diff;
+    }
+    output[0] = (half)(sum / (float)total);
+}
+
+__mlu_entry__ void mse_float_kernel(const float *predictions, const float *targets, float *output, int total) {
+    if (taskId != 0) {
+        return;
+    }
+    float sum = 0.0f;
+    for (int i = 0; i < total; ++i) {
+        float diff = predictions[i] - targets[i];
+        sum += diff * diff;
+    }
+    output[0] = sum / (float)total;
+}
+
+torch::Tensor bang_func(torch::Tensor predictions, torch::Tensor targets) {
+    auto pred = predictions.contiguous();
+    auto tgt = targets.contiguous();
+    TORCH_CHECK(pred.numel() == tgt.numel(), "MSE input size mismatch");
+    auto output = torch::empty({}, pred.options());
+    int total = pred.numel();
+    TORCH_CHECK(total > 0, "MSE expects non-empty inputs");
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t dim = {4, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    if (pred.scalar_type() == at::ScalarType::Half) {
+        mse_half_kernel<<<dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(pred.data_ptr<at::Half>()),
+            reinterpret_cast<const half *>(tgt.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            total);
+    } else {
+        TORCH_CHECK(pred.scalar_type() == at::ScalarType::Float, "MSE only supports float16 and float32");
+        mse_float_kernel<<<dim, ktype, queue>>>(
+            pred.data_ptr<float>(),
+            tgt.data_ptr<float>(),
+            output.data_ptr<float>(),
+            total);
+    }
+
+    return output;
+}
