@@ -9,9 +9,14 @@ __mlu_entry__ void gemv_half_kernel(const half *A, const half *B, half *C, int r
 
     for (; row < rows; row += row_step) {
         float sum = 0.0f;
+        float compensation = 0.0f;
         const half *row_a = A + row * cols;
         for (int col = 0; col < cols; ++col) {
-            sum += (float)row_a[col] * (float)B[col];
+            float product = (float)row_a[col] * (float)B[col];
+            float y = product - compensation;
+            float t = sum + y;
+            compensation = (t - sum) - y;
+            sum = t;
         }
         C[row] = (half)sum;
     }
@@ -23,9 +28,14 @@ __mlu_entry__ void gemv_float_kernel(const float *A, const float *B, float *C, i
 
     for (; row < rows; row += row_step) {
         float sum = 0.0f;
+        float compensation = 0.0f;
         const float *row_a = A + row * cols;
         for (int col = 0; col < cols; ++col) {
-            sum += row_a[col] * B[col];
+            float product = row_a[col] * B[col];
+            float y = product - compensation;
+            float t = sum + y;
+            compensation = (t - sum) - y;
+            sum = t;
         }
         C[row] = sum;
     }

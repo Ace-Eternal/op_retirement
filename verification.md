@@ -226,3 +226,23 @@
 051
 138
 ```
+
+## 023 修复验证
+
+修复题目：
+
+- `023_Matrix_vector_multiplication_`：`Matrix_vector_multiplication_.mlu`
+
+修复内容：float/half GEMV 累加改为 Kahan 补偿求和，降低 `K=131072` 全尺寸累积误差。
+
+实验服务器全尺寸复测：
+
+| 题号 | 输入 | 最大误差 | 结论 |
+| --- | --- | --- | --- |
+| 023 | `M=256,K=131072`，`bfloat16().float()` | `0.00286865234375` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+023
+```

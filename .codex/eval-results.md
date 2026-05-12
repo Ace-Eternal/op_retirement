@@ -270,6 +270,14 @@ torch::Tensor bang_func(
     int num_layers);
 ```
 
+## 023 修复本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 023 | Matrix_vector_multiplication_ | 待提交修复 | 全尺寸通过 | 未提交无评论 | 待提交 |
+
+修复内容：float/half GEMV 累加改为 Kahan 补偿求和。实验服务器使用题目全尺寸 `M=256,K=131072` 和 `bfloat16().float()` 输入复测，最大误差 `0.00286865234375`。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
