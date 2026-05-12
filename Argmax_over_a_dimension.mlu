@@ -1,0 +1,76 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void argmax_dim1_half_kernel(const half *input, int64_t *output, int dim0, int dim1, int dim2) {
+    int total = dim0 * dim2;
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        int b = idx / dim2;
+        int j = idx % dim2;
+        int base = b * dim1 * dim2 + j;
+        float max_value = (float)input[base];
+        int64_t max_index = 0;
+        for (int i = 1; i < dim1; ++i) {
+            float value = (float)input[base + i * dim2];
+            if (value > max_value) {
+                max_value = value;
+                max_index = i;
+            }
+        }
+        output[idx] = max_index;
+    }
+}
+
+__mlu_entry__ void argmax_dim1_float_kernel(const float *input, int64_t *output, int dim0, int dim1, int dim2) {
+    int total = dim0 * dim2;
+    for (int idx = taskId; idx < total; idx += taskDim) {
+        int b = idx / dim2;
+        int j = idx % dim2;
+        int base = b * dim1 * dim2 + j;
+        float max_value = input[base];
+        int64_t max_index = 0;
+        for (int i = 1; i < dim1; ++i) {
+            float value = input[base + i * dim2];
+            if (value > max_value) {
+                max_value = value;
+                max_index = i;
+            }
+        }
+        output[idx] = max_index;
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, int dim) {
+    TORCH_CHECK(dim == 1, "Argmax_over_a_dimension supports dim=1 for the basic task");
+    auto input = x.contiguous();
+    TORCH_CHECK(input.dim() == 3, "Argmax_over_a_dimension expects [batch, dim1, dim2]");
+    auto output = torch::empty({input.size(0), input.size(2)}, input.options().dtype(torch::kLong));
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {256, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    int dim0 = input.size(0);
+    int dim1 = input.size(1);
+    int dim2 = input.size(2);
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        argmax_dim1_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            output.data_ptr<int64_t>(),
+            dim0,
+            dim1,
+            dim2);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "Argmax only supports float16 and float32");
+        argmax_dim1_float_kernel<<<task_dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            output.data_ptr<int64_t>(),
+            dim0,
+            dim1,
+            dim2);
+    }
+
+    return output;
+}

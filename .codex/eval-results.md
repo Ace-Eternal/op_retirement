@@ -11,9 +11,9 @@
 | 002 | matrix_scalar_multiplication | 已提交于 `88b0b66` | 通过 | API 已读取 | 通过 |
 | 003 | LogSoftmax | 已提交于 `88b0b66` | 通过 | API 已读取 | 通过 |
 | 070 | Sqrt | 已提交于 `88b0b66` | 本地正数样例通过 | API 已读取 | 失败，待修复 |
-| 023 | Matrix_vector_multiplication | 未提交 | 通过 | 未提交无评论 | 待提交 |
-| 103 | MSE_Loss | 未提交 | 通过 | 未提交无评论 | 待提交 |
-| 104 | KL_Divergence_Loss | 未提交 | 通过 | 未提交无评论 | 待提交 |
+| 023 | Matrix_vector_multiplication | 已提交于 `f9ccaec` | 小规模通过 | API 已读取 | 失败，待修复 |
+| 103 | MSE_Loss | 已提交于 `f9ccaec` | 通过 | API 已读取 | 通过 |
+| 104 | KL_Divergence_Loss | 已提交于 `f9ccaec` | 通过 | API 已读取 | 通过 |
 
 ## 04c41ea - Task 001 修复提交
 
@@ -109,3 +109,52 @@ cnrtInvokeKernel: Launch kernel failed.
 | 103 | `torch.float32` | `0.00030684471130371094` | 通过 |
 | 104 | `torch.float16` | `0.0001233816146850586` | 通过 |
 | 104 | `torch.float32` | `8.761882781982422e-06` | 通过 |
+
+## Basic 第三批本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 034 | Argmax_over_a_dimension | 待提交 | 通过 | 未提交无评论 | 待提交 |
+| 051 | cumsum | 待提交 | 通过 | 未提交无评论 | 待提交 |
+| 075 | TopK | 待提交 | 通过 | 未提交无评论 | 待提交 |
+
+实验服务器复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 034 | `torch.float16` | indices 完全一致 | 通过 |
+| 034 | `torch.float32` | indices 完全一致 | 通过 |
+| 051 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 051 | `torch.float32` | 最大误差 `0.00031280517578125` | 通过 |
+| 075 | `torch.float16` | values 最大误差 `0.0`，indices 完全一致 | 通过 |
+| 075 | `torch.float32` | values 最大误差 `0.0`，indices 完全一致 | 通过 |
+
+## f9ccaec - Basic 第二批
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/f9ccaec54ed3f58878c5033b4c4b87942d179fdd
+- config: `023,103,104`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 023 | Matrix_vector_multiplication_ | 失败 | 远程评测 | score `0.0`，diff `0.2408447265625`，latency `450401.4 us` |
+| 103 | MSE_Loss | 通过 | 远程评测 | score `0.0001332952489764829`，diff `8.71419906616211e-05`，latency `189054.0 us` |
+| 104 | KL_Divergence_Loss | 通过 | 远程评测 | score `0.00230584859777113`，diff `3.4332275390625e-05`，latency `57159.0 us` |
+
+### 远程评测报告摘要
+
+```text
+| `023_Matrix_vector_multiplication_` | 0.000 | FAIL (diff=2.41e-01) | 450401.400 us | ❌ |
+| `103_MSE_Loss` | 0.000 | PASS (diff=8.71e-05) | 189054.000 us | ✅ |
+| `104_KL_Divergence_Loss` | 0.002 | PASS (diff=3.43e-05) | 57159.000 us | ✅ |
+
+汇总: 提交3题，通过2题
+```
+
+### 023 失败日志
+
+```text
+@@RESULT@@{"passed": false, "max_abs_diff": 0.2408447265625, "torch_us": 938.2, "bangc_us": 450401.4, "score": 0.0}
+```
+
+失败原因判断：实验服务器只用较小 `K=4096` 做过验证；远程评测使用题目全尺寸 `K=131072`，朴素 float 累加与参考结果误差扩大到 `0.2408`。后续修复应在实验服务器按全尺寸复现，考虑分块规约顺序、累加精度和 bfloat16 来源数据。

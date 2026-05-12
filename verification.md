@@ -84,3 +84,30 @@
 103
 104
 ```
+
+## Basic 第三批验证
+
+本批完成题目：
+
+- `034_Argmax_over_a_dimension`：`Argmax_over_a_dimension.mlu`
+- `051_cumsum`：`cumsum.mlu`
+- `075_TopK`：`TopK.mlu`
+
+实验服务器复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 034 | `torch.float16` | indices 完全一致 | 通过 |
+| 034 | `torch.float32` | indices 完全一致 | 通过 |
+| 051 | `torch.float16` | 最大误差 `0.0` | 通过 |
+| 051 | `torch.float32` | 最大误差 `0.00031280517578125` | 通过 |
+| 075 | `torch.float16` | values 最大误差 `0.0`，indices 完全一致 | 通过 |
+| 075 | `torch.float32` | values 最大误差 `0.0`，indices 完全一致 | 通过 |
+
+当前 `config` 设置为：
+
+```text
+034
+051
+075
+```

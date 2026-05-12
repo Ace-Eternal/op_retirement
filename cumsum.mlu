@@ -1,0 +1,57 @@
+#include <bang.h>
+#include <torch/extension.h>
+#include <cnrt.h>
+#include "framework/core/MLUStream.h"
+
+__mlu_entry__ void cumsum_dim1_half_kernel(const half *input, half *output, int rows, int cols) {
+    for (int row = taskId; row < rows; row += taskDim) {
+        float sum = 0.0f;
+        int base = row * cols;
+        for (int col = 0; col < cols; ++col) {
+            sum += (float)input[base + col];
+            output[base + col] = (half)sum;
+        }
+    }
+}
+
+__mlu_entry__ void cumsum_dim1_float_kernel(const float *input, float *output, int rows, int cols) {
+    for (int row = taskId; row < rows; row += taskDim) {
+        float sum = 0.0f;
+        int base = row * cols;
+        for (int col = 0; col < cols; ++col) {
+            sum += input[base + col];
+            output[base + col] = sum;
+        }
+    }
+}
+
+torch::Tensor bang_func(torch::Tensor x, int dim) {
+    TORCH_CHECK(dim == 1, "cumsum supports dim=1 for the basic task");
+    auto input = x.contiguous();
+    TORCH_CHECK(input.dim() == 2, "cumsum expects [batch, cols]");
+    auto output = torch::empty_like(input);
+
+    cnrtQueue_t queue = torch_mlu::getCurMLUStream();
+    cnrtDim3_t task_dim = {128, 1, 1};
+    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
+
+    int rows = input.size(0);
+    int cols = input.size(1);
+
+    if (input.scalar_type() == at::ScalarType::Half) {
+        cumsum_dim1_half_kernel<<<task_dim, ktype, queue>>>(
+            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
+            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            rows,
+            cols);
+    } else {
+        TORCH_CHECK(input.scalar_type() == at::ScalarType::Float, "cumsum only supports float16 and float32");
+        cumsum_dim1_float_kernel<<<task_dim, ktype, queue>>>(
+            input.data_ptr<float>(),
+            output.data_ptr<float>(),
+            rows,
+            cols);
+    }
+
+    return output;
+}
