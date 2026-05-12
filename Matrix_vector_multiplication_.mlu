@@ -3,7 +3,7 @@
 #include <cnrt.h>
 #include "framework/core/MLUStream.h"
 
-__mlu_entry__ void gemv_half_kernel(const half *A, const half *B, half *C, int rows, int cols) {
+__mlu_entry__ void gemv_half_kernel(const half *A, const half *B, float *C, int rows, int cols) {
     uint32_t row = taskId;
     uint32_t row_step = taskDim;
 
@@ -18,7 +18,7 @@ __mlu_entry__ void gemv_half_kernel(const half *A, const half *B, half *C, int r
             compensation = (t - sum) - y;
             sum = t;
         }
-        C[row] = (half)sum;
+        C[row] = sum;
     }
 }
 
@@ -46,7 +46,9 @@ torch::Tensor bang_func(torch::Tensor A, torch::Tensor B) {
     auto b = B.contiguous();
     TORCH_CHECK(a.dim() == 2 && b.dim() == 2 && b.size(1) == 1, "GEMV expects A=[M,K], B=[K,1]");
     TORCH_CHECK(a.size(1) == b.size(0), "GEMV dimension mismatch");
-    auto output = torch::empty({a.size(0), 1}, a.options());
+    auto output = a.scalar_type() == at::ScalarType::Half
+        ? torch::empty({a.size(0), 1}, a.options().dtype(torch::kFloat))
+        : torch::empty({a.size(0), 1}, a.options());
     int rows = a.size(0);
     int cols = a.size(1);
     if (rows == 0 || cols == 0) {
@@ -61,7 +63,7 @@ torch::Tensor bang_func(torch::Tensor A, torch::Tensor B) {
         gemv_half_kernel<<<dim, ktype, queue>>>(
             reinterpret_cast<const half *>(a.data_ptr<at::Half>()),
             reinterpret_cast<const half *>(b.data_ptr<at::Half>()),
-            reinterpret_cast<half *>(output.data_ptr<at::Half>()),
+            output.data_ptr<float>(),
             rows,
             cols);
     } else {

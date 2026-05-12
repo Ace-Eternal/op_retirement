@@ -278,6 +278,30 @@ torch::Tensor bang_func(
 
 修复内容：float/half GEMV 累加改为 Kahan 补偿求和。实验服务器使用题目全尺寸 `M=256,K=131072` 和 `bfloat16().float()` 输入复测，最大误差 `0.00286865234375`。
 
+## 276526c - 失败题目第一批修复
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/276526c96a7d6967fee19a5816081bbc1b0a7790
+- config: `070,051,138`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 051 | cumsum | 通过 | 远程评测 | score `0.003139416751328215`，diff `3.0517578125e-05`，latency `12008.6 us` |
+| 070 | Sqrt | 通过 | 远程评测 | score `0.48437499999999994`，diff `0.0004881620407104492`，latency `57.6 us` |
+| 138 | GRU_forward | 失败 | 远程评测 | score `0.0`，diff `1.0`，latency `2481.0 us` |
+
+## 43d0b27 - 023 精度修复第一次
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/43d0b278a49568d8843b45feacbdebc3b2f062be
+- config: `023`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 023 | Matrix_vector_multiplication_ | 失败 | 远程评测 | score `0.0`，diff `0.24957275390625`，latency `468696.6 us` |
+
+失败原因判断：本地全尺寸验证使用 float32 输入通过，但远程很可能按题目 dtype 使用 half 输入路径；当前 half 路径虽然 Kahan 累加，但输出 cast 回 half，导致误差约 `0.25`。下一步将 half 输入路径输出改为 float32。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
