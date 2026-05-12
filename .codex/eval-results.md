@@ -400,6 +400,24 @@ CN_INVOKE_ERROR_EXECUTED_TIMEOUT
 
 修复内容：改用 CNNL deconvolution。输入从 NCHW 转为 NHWC，权重从 IOHW 转为 HWCN，其中 CNNL deconv 的 HWCN 语义为 `[kh, kw, out_channels, in_channels]`。实验服务器题目全尺寸 `batch=16,in_C=32,out_C=64,H=128,W=256,k=3` 复测，耗时约 `6.53 ms`，参考切片最大误差 `0.0`。
 
+## e8a2f75 - 012 CNNL deconvolution
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/e8a2f750b038b95b40969199674d3c50a664df47
+- config: `012`
+- 评论状态：已通过 GitHub REST API 读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 012 | conv_transposed_2D__asymmetric_input__square_kernel | 通过 | 远程评测 | score `0.6398074878941774`，diff `0.0`，latency `3386.8 us` |
+
+## 138 修复候选本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 138 | GRU_forward | 待提交修复 | 全尺寸通过 | 未提交无评论 | 待提交 |
+
+修复内容：使用 `at::gru` 调用 torch_mlu 已有 GRU 实现，并通过 `torch_mlu::getCurMLUStream()` 保持 MLU 扩展加载依赖完整。实验服务器题目全尺寸 `batch=32,seq=128,input_size=256,hidden_size=512,num_layers=2` 复测，耗时约 `18.53 ms`，最大误差 `0.0`。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
