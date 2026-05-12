@@ -380,6 +380,26 @@ CN_INVOKE_ERROR_EXECUTED_TIMEOUT
 
 失败原因判断：CNNL half-half-half 路径与 MLU half conv 对齐，但远程参考按 float 精度计算最大绝对误差，half 输出累计误差达到 `0.07225`。已改为输入和权重转 float，使用 CNNL float-float-float 路径输出 float；实验服务器全尺寸复测耗时约 `9.84 ms`，参考切片最大误差 `0.0`。
 
+## 0541834 - 135 CNNL float 第二次
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/0541834bc420ace10c2d654e58406f1188d91574
+- config: `135`
+- 评论状态：已通过 GitHub REST API 读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 135 | Dilated_conv_2D | 失败 | 远程评测 | score `0.0`，diff `0.041538238525390625`，latency `3386.0 us` |
+
+失败原因判断：`0.0415` 与 `nn.Conv2d` 默认 bias 初始化范围 `±1/sqrt(64*3*3)` 高度一致。题目 reference 的 `nn.Conv2d` 默认 `bias=True`，但 cpp wrapper 没有 bias 参数，当前无法从算子入参恢复该随机 bias。
+
+## 012 修复候选本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 012 | conv_transposed_2D__asymmetric_input__square_kernel | 待提交修复 | 全尺寸通过 | 未提交无评论 | 待提交 |
+
+修复内容：改用 CNNL deconvolution。输入从 NCHW 转为 NHWC，权重从 IOHW 转为 HWCN，其中 CNNL deconv 的 HWCN 语义为 `[kh, kw, out_channels, in_channels]`。实验服务器题目全尺寸 `batch=16,in_C=32,out_C=64,H=128,W=256,k=3` 复测，耗时约 `6.53 ms`，参考切片最大误差 `0.0`。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba

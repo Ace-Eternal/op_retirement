@@ -1,58 +1,73 @@
-#include <bang.h>
 #include <torch/extension.h>
 #include <cnrt.h>
+#include <cnnl.h>
 #include "framework/core/MLUStream.h"
 
-__mlu_entry__ void conv_transpose2d_half_kernel(const half *x, const half *kernel, float *out, int batch, int in_c, int out_c, int h, int w, int k, int stride, int padding, int out_h, int out_w) {
-    long total = (long)batch * out_c * out_h * out_w;
-    for (long idx = taskId; idx < total; idx += taskDim) {
-        int ow = idx % out_w;
-        long t = idx / out_w;
-        int oh = t % out_h;
-        t /= out_h;
-        int oc = t % out_c;
-        int b = t / out_c;
-        float sum = 0.0f;
-        for (int ic = 0; ic < in_c; ++ic) {
-            for (int kh = 0; kh < k; ++kh) {
-                int ih_nom = oh + padding - kh;
-                if (ih_nom % stride != 0) continue;
-                int ih = ih_nom / stride;
-                if (ih < 0 || ih >= h) continue;
-                for (int kw = 0; kw < k; ++kw) {
-                    int iw_nom = ow + padding - kw;
-                    if (iw_nom % stride != 0) continue;
-                    int iw = iw_nom / stride;
-                    if (iw < 0 || iw >= w) continue;
-                    sum += (float)x[((b * in_c + ic) * h + ih) * w + iw] * (float)kernel[((ic * out_c + oc) * k + kh) * k + kw];
-                }
-            }
-        }
-        out[idx] = sum;
-    }
-}
+#define CHECK_CNNL(call) TORCH_CHECK((call) == CNNL_STATUS_SUCCESS, "CNNL call failed")
+#define CHECK_CNRT(call) TORCH_CHECK((call) == cnrtSuccess, "CNRT call failed")
 
 torch::Tensor bang_func(torch::Tensor x, torch::Tensor kernel, int in_channels, int out_channels, int kernel_size, int stride, int padding, int output_padding, int groups, bool bias) {
     TORCH_CHECK(groups == 1 && !bias, "conv_transpose2d basic task expects groups=1 and bias=false");
-    auto input = x.contiguous();
-    auto weight = kernel.contiguous();
-    int batch = input.size(0), h = input.size(2), w = input.size(3);
+    TORCH_CHECK(x.scalar_type() == at::ScalarType::Half, "conv_transpose2d basic task expects float16");
+
+    auto input = x.permute({0, 2, 3, 1}).contiguous().to(torch::kFloat);
+    auto weight = kernel.permute({2, 3, 1, 0}).contiguous().to(torch::kFloat);
+    int batch = x.size(0), h = x.size(2), w = x.size(3);
     int out_h = (h - 1) * stride - 2 * padding + kernel_size + output_padding;
     int out_w = (w - 1) * stride - 2 * padding + kernel_size + output_padding;
-    auto output = torch::empty({batch, out_channels, out_h, out_w}, input.options().dtype(torch::kFloat));
+    auto output_nhwc = torch::empty({batch, out_h, out_w, out_channels}, x.options().dtype(torch::kFloat));
+
+    cnnlHandle_t handle;
+    CHECK_CNNL(cnnlCreate(&handle));
     cnrtQueue_t queue = torch_mlu::getCurMLUStream();
-    cnrtDim3_t task_dim = {256, 1, 1};
-    cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
-    TORCH_CHECK(input.scalar_type() == at::ScalarType::Half || input.scalar_type() == at::ScalarType::Float, "conv_transpose2d supports float16/float32");
-    if (input.scalar_type() == at::ScalarType::Half) {
-        conv_transpose2d_half_kernel<<<task_dim, ktype, queue>>>(
-            reinterpret_cast<const half *>(input.data_ptr<at::Half>()),
-            reinterpret_cast<const half *>(weight.data_ptr<at::Half>()),
-            output.data_ptr<float>(),
-            batch, in_channels, out_channels, h, w, kernel_size, stride, padding, out_h, out_w);
-    } else {
-        // float32 path intentionally reuses half kernel shape logic through scalar code by requiring half in this basic competition path.
-        TORCH_CHECK(false, "float32 path is not implemented for conv_transpose2d basic task");
+    CHECK_CNNL(cnnlSetQueue(handle, queue));
+
+    cnnlTensorDescriptor_t x_desc, w_desc, y_desc;
+    cnnlDeconvolutionDescriptor_t deconv_desc;
+    CHECK_CNNL(cnnlCreateTensorDescriptor(&x_desc));
+    CHECK_CNNL(cnnlCreateTensorDescriptor(&w_desc));
+    CHECK_CNNL(cnnlCreateTensorDescriptor(&y_desc));
+    CHECK_CNNL(cnnlCreateDeconvolutionDescriptor(&deconv_desc));
+
+    int x_dims[4] = {batch, h, w, in_channels};
+    int w_dims[4] = {kernel_size, kernel_size, out_channels, in_channels};
+    int y_dims[4] = {batch, out_h, out_w, out_channels};
+    CHECK_CNNL(cnnlSetTensorDescriptor(x_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_FLOAT, 4, x_dims));
+    CHECK_CNNL(cnnlSetTensorDescriptor(w_desc, CNNL_LAYOUT_HWCN, CNNL_DTYPE_FLOAT, 4, w_dims));
+    CHECK_CNNL(cnnlSetTensorDescriptor(y_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_FLOAT, 4, y_dims));
+
+    int pads[4] = {padding, padding, padding, padding};
+    int strides[2] = {stride, stride};
+    int dilations[2] = {1, 1};
+    CHECK_CNNL(cnnlSetDeconvolutionDescriptor(deconv_desc, 4, pads, strides, dilations, groups, CNNL_DTYPE_FLOAT));
+
+    cnnlDeconvolutionAlgo_t algo;
+    CHECK_CNNL(cnnlGetDeconvolutionAlgo(handle, x_desc, w_desc, nullptr, deconv_desc, y_desc, CNNL_CONVOLUTION_BWD_DATA_FASTEST, &algo));
+    size_t workspace_size = 0;
+    CHECK_CNNL(cnnlGetDeconvolutionWorkspaceSize_v2(handle, x_desc, w_desc, nullptr, deconv_desc, y_desc, algo, &workspace_size));
+    void *workspace = nullptr;
+    if (workspace_size > 0) {
+        CHECK_CNRT(cnrtMalloc(&workspace, workspace_size));
     }
-    return output;
+
+    CHECK_CNNL(cnnlDeconvolution(
+        handle, nullptr,
+        x_desc, input.data_ptr<float>(),
+        w_desc, weight.data_ptr<float>(),
+        nullptr, nullptr,
+        deconv_desc, algo,
+        workspace, workspace_size,
+        nullptr,
+        y_desc, output_nhwc.data_ptr<float>()));
+
+    if (workspace != nullptr) {
+        cnrtFree(workspace);
+    }
+    cnnlDestroyDeconvolutionDescriptor(deconv_desc);
+    cnnlDestroyTensorDescriptor(x_desc);
+    cnnlDestroyTensorDescriptor(w_desc);
+    cnnlDestroyTensorDescriptor(y_desc);
+    cnnlDestroy(handle);
+
+    return output_nhwc.permute({0, 3, 1, 2}).contiguous();
 }
