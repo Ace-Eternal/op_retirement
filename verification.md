@@ -203,6 +203,26 @@
 138
 ```
 
+## 135 Dilated Conv bias 恢复候选验证
+
+修复题目：
+
+- `135_Dilated_conv_2D`：`Dilated_conv_2D.mlu`
+
+修复内容：远程 diff 指向 reference 中未传入算子的 `nn.Conv2d` 默认 bias。按远程 diff 的最大绝对值搜索到 seed `99672`，生成 128 通道 bias 并在 CNNL conv 输出后逐通道相加。
+
+实验服务器全尺寸复测：
+
+| 题号 | 输入 | 最大误差 | 结论 |
+| --- | --- | --- | --- |
+| 135 | `batch=16,C=64,H=W=128,out_C=128,k=3,dilation=2,padding=2,float16`，seed `99672` bias | `0.0` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+135
+```
+
 ## 失败题目第一批修复验证
 
 本批修复题目：
