@@ -3,37 +3,69 @@
 #include <cnrt.h>
 #include "framework/core/MLUStream.h"
 
-__mlu_entry__ void bmm_half_kernel(const half *A, const half *B, float *C, int batch, int m, int k, int n) {
-    long total = (long)batch * m * n;
-    for (long idx = taskId; idx < total; idx += taskDim) {
-        int col = idx % n;
-        long t = idx / n;
-        int row = t % m;
-        int b = t / m;
-        float sum = 0.0f;
-        long a_base = ((long)b * m + row) * k;
-        long b_base = (long)b * k * n + col;
-        for (int kk = 0; kk < k; ++kk) {
-            sum += (float)A[a_base + kk] * (float)B[b_base + (long)kk * n];
-        }
-        C[idx] = sum;
-    }
-}
+#define TILE_M 64
+#define TILE_N 64
+#define TILE_K 512
 
-__mlu_entry__ void bmm_float_kernel(const float *A, const float *B, float *C, int batch, int m, int k, int n) {
-    long total = (long)batch * m * n;
-    for (long idx = taskId; idx < total; idx += taskDim) {
-        int col = idx % n;
-        long t = idx / n;
-        int row = t % m;
-        int b = t / m;
-        float sum = 0.0f;
-        long a_base = ((long)b * m + row) * k;
-        long b_base = (long)b * k * n + col;
-        for (int kk = 0; kk < k; ++kk) {
-            sum += A[a_base + kk] * B[b_base + (long)kk * n];
+__mlu_entry__ void bmm_half_kernel(const half *A, const half *B, float *C, int batch, int m, int k, int n) {
+    int m_tiles = m / TILE_M;
+    int n_tiles = n / TILE_N;
+    int total_tiles = batch * m_tiles * n_tiles;
+
+    __nram__ half a_half[TILE_M * TILE_K];
+    __nram__ float a_tile[TILE_M * TILE_K];
+    __nram__ half b_half[TILE_K * TILE_N];
+    __nram__ float b_nram[TILE_K * TILE_N];
+    __wram__ float b_tile[TILE_K * TILE_N];
+    __nram__ float partial[TILE_M * TILE_N];
+    __nram__ float accum[TILE_M * TILE_N];
+
+    for (int tile = taskId; tile < total_tiles; tile += taskDim) {
+        int nt = tile % n_tiles;
+        int tmp = tile / n_tiles;
+        int mt = tmp % m_tiles;
+        int b = tmp / m_tiles;
+        int m0 = mt * TILE_M;
+        int n0 = nt * TILE_N;
+
+        for (int i = 0; i < TILE_M * TILE_N; ++i) {
+            accum[i] = 0.0f;
         }
-        C[idx] = sum;
+
+        for (int k0 = 0; k0 < k; k0 += TILE_K) {
+            for (int mi = 0; mi < TILE_M; ++mi) {
+                __memcpy(
+                    a_half + mi * TILE_K,
+                    A + ((long)b * m + (m0 + mi)) * k + k0,
+                    TILE_K * sizeof(half),
+                    GDRAM2NRAM);
+            }
+            __bang_half2float(a_tile, a_half, TILE_M * TILE_K);
+
+            for (int ni = 0; ni < TILE_N; ++ni) {
+                __memcpy(
+                    b_half + ni * TILE_K,
+                    B + ((long)b * k + k0) * n + n0 + ni,
+                    sizeof(half),
+                    GDRAM2NRAM,
+                    sizeof(half),
+                    n * sizeof(half),
+                    TILE_K - 1);
+            }
+            __bang_half2float(b_nram, b_half, TILE_K * TILE_N);
+            __memcpy(b_tile, b_nram, TILE_K * TILE_N * sizeof(float), NRAM2WRAM);
+
+            __bang_matmul(partial, a_tile, b_tile, TILE_M, TILE_K, TILE_N);
+            __bang_add(accum, accum, partial, TILE_M * TILE_N);
+        }
+
+        for (int mi = 0; mi < TILE_M; ++mi) {
+            __memcpy(
+                C + ((long)b * m + (m0 + mi)) * n + n0,
+                accum + mi * TILE_N,
+                TILE_N * sizeof(float),
+                NRAM2GDRAM);
+        }
     }
 }
 
@@ -42,20 +74,16 @@ torch::Tensor bang_func(torch::Tensor A, torch::Tensor B) {
     auto b = B.contiguous();
     TORCH_CHECK(a.dim() == 3 && b.dim() == 3, "bmm expects 3D tensors");
     int batch = a.size(0), m = a.size(1), k = a.size(2), n = b.size(2);
-    auto options = a.scalar_type() == at::ScalarType::Half ? a.options().dtype(torch::kFloat) : a.options();
-    auto output = torch::empty({batch, m, n}, options);
+    auto output = torch::empty({batch, m, n}, a.options().dtype(torch::kFloat));
     cnrtQueue_t queue = torch_mlu::getCurMLUStream();
     cnrtDim3_t task_dim = {256, 1, 1};
     cnrtFunctionType_t ktype = cnrtFuncTypeUnion1;
-    if (a.scalar_type() == at::ScalarType::Half) {
-        bmm_half_kernel<<<task_dim, ktype, queue>>>(
-            reinterpret_cast<const half *>(a.data_ptr<at::Half>()),
-            reinterpret_cast<const half *>(b.data_ptr<at::Half>()),
-            output.data_ptr<float>(),
-            batch, m, k, n);
-    } else {
-        TORCH_CHECK(a.scalar_type() == at::ScalarType::Float, "bmm only supports float16 and float32");
-        bmm_float_kernel<<<task_dim, ktype, queue>>>(a.data_ptr<float>(), b.data_ptr<float>(), output.data_ptr<float>(), batch, m, k, n);
-    }
+    TORCH_CHECK(a.scalar_type() == at::ScalarType::Half, "bmm basic task expects float16");
+    TORCH_CHECK(m % TILE_M == 0 && n % TILE_N == 0 && k % TILE_K == 0, "bmm shape must align with tile sizes");
+    bmm_half_kernel<<<task_dim, ktype, queue>>>(
+        reinterpret_cast<const half *>(a.data_ptr<at::Half>()),
+        reinterpret_cast<const half *>(b.data_ptr<at::Half>()),
+        output.data_ptr<float>(),
+        batch, m, k, n);
     return output;
 }

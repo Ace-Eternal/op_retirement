@@ -331,6 +331,25 @@ CN_INVOKE_ERROR_EXECUTED_TIMEOUT
 | --- | --- | --- | --- | --- |
 | 023 | Matrix_vector_multiplication_ | 通过 | 远程评测 | score `0.0019347441444191025`，diff `0.000244140625`，latency `484922.0 us` |
 
+## 6c068e8 - 012/135 单独重测
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/6c068e8f2fe8b941e55caf169ab18509ef0ecc31
+- config: `012,135`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 012 | conv_transposed_2D__asymmetric_input__square_kernel | 失败 | 远程评测 | 无详细 stdout/stderr，仅显示失败 |
+| 135 | Dilated_conv_2D | 失败 | 远程评测 | 无详细 stdout/stderr，仅显示失败 |
+
+## 004 修复候选本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 004 | batched_matrix_multiplication | 待提交修复 | 全尺寸通过 | 未提交无评论 | 待提交 |
+
+修复内容：将朴素逐元素 BMM 改为 `__bang_matmul` 分块实现；half 输入先转换为 float，右矩阵按 `__bang_matmul` 要求整理成 WRAM column-major 布局。实验服务器使用题目全尺寸 `batch=128,m=512,k=1024,n=2048` 复测，第二次算子耗时约 `139036.0 ms`，小切片最大误差 `3.4332275390625e-05`。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
