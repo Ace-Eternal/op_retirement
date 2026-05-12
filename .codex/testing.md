@@ -38,3 +38,22 @@ source /torch/venv3/pytorch/bin/activate
 | 负数、零、正数边界样例 | 通过 | `SAMPLE_MAX_ABS 0.0`。 |
 
 远端测试使用临时 `binding.cpp` 暴露 `bang_func`，该文件仅用于验证，不属于提交内容。
+
+## 评测反馈修复
+
+评测首次反馈：
+
+```text
+[RUNTIME ERROR] BangC 推理失败: expected scalar type Float but found Half
+```
+
+原因：评测输入为 `torch.float16`，原实现只调用 `data_ptr<float>()`，PyTorch 在 half 输入上触发类型检查失败。
+
+修复：新增 `leakyrelu_half_kernel`，在 `bang_func` 中按 `input.scalar_type()` 分发 `Half` 与 `Float`。
+
+复测结果：
+
+| 输入 dtype | 输出 dtype | 最大绝对误差 | 是否满足 `1e-2` |
+| --- | --- | --- | --- |
+| `torch.float16` | `torch.float16` | `3.0517578125e-05` | 是 |
+| `torch.float32` | `torch.float32` | `0.0` | 是 |

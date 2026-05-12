@@ -20,3 +20,5 @@
 7. 设置远端环境变量 `NEUWARE_HOME`、`PATH`、`LD_LIBRARY_PATH` 并启用 `/torch/venv3/pytorch`，确认 `torch_mlu 1.24.1-torch2.5.0` 且 `torch.mlu.is_available()` 为 `True`。
 8. 首次远端编译发现 `torch_mlu::getCurMLUStream()` 未声明，定位到头文件 `framework/core/MLUStream.h` 并补充 include。
 9. 重新远端编译 `LeakyReLU.mlu` 成功；使用临时 `binding.cpp` 执行 `[16, 16384]` 随机输入和边界样例测试，最大绝对误差均为 `0.0`。
+10. 根据评测错误 `expected scalar type Float but found Half`，确认评测输入为 half；新增 half kernel 与 dtype 分发。
+11. 在实验服务器复测 half 与 float：half 最大绝对误差 `3.0517578125e-05`，float 最大绝对误差 `0.0`，均满足 `1e-2`。

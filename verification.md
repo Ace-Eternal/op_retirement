@@ -22,4 +22,11 @@
 - 随机输入 `[16, 16384]`：与 PyTorch `leaky_relu` 对比，最大绝对误差 `0.0`。
 - 边界样例 `[-2.0, -0.0, 0.0, 3.0, -5.5]`：最大绝对误差 `0.0`。
 
+## 评测错误修复
+
+评测运行时错误为 `expected scalar type Float but found Half`，说明评测输入使用 `torch.float16`。已新增 half kernel 并在 `bang_func` 中按 dtype 分发：
+
+- `torch.float16` 输入：最大绝对误差 `3.0517578125e-05`，满足 `1e-2`。
+- `torch.float32` 输入：最大绝对误差 `0.0`。
+
 本机仍未安装或未暴露 `cncc`/`mlucc`，因此本机无法执行 BangC 编译与 MLU 测试。
