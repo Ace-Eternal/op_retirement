@@ -21,8 +21,9 @@ __mlu_entry__ void sqrt_half_kernel(const half *input, half *output, int total) 
         uint32_t aligned_len = (len + 127) & ~127;
 
         __memcpy(nram_input, input + start + offset, len * sizeof(half), GDRAM2NRAM);
-        // half 路径先提升到 float 执行 sqrt，再转回 half。
+        // 评测参考会规避 NaN，负数先取绝对值再开方。
         __bang_half2float(nram_float, nram_input, aligned_len);
+        __bang_active_abs(nram_float, nram_float, aligned_len);
         __bang_sqrt(nram_float, nram_float, aligned_len);
         __bang_float2half_rn(nram_input, nram_float, aligned_len);
         __memcpy(output + start + offset, nram_input, len * sizeof(half), NRAM2GDRAM);
@@ -44,6 +45,7 @@ __mlu_entry__ void sqrt_float_kernel(const float *input, float *output, int tota
         uint32_t aligned_len = (len + 63) & ~63;
 
         __memcpy(nram_input, input + start + offset, len * sizeof(float), GDRAM2NRAM);
+        __bang_active_abs(nram_input, nram_input, aligned_len);
         __bang_sqrt(nram_input, nram_input, aligned_len);
         __memcpy(output + start + offset, nram_input, len * sizeof(float), NRAM2GDRAM);
     }

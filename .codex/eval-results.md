@@ -223,6 +223,53 @@ cnrtInvokeKernel: Launch kernel failed.
 
 说明：`problems.json` 中该题参考实现的 `get_init_inputs()` 提供 GRU 权重和 bias，但 `cpp_wrapper` 只有 `torch::Tensor x, int input_size, int hidden_size, int num_layers`，没有权重参数。当前先提交形状正确的零输出版本，等待远程评测日志确认真实接口。
 
+## 75eb43a - Basic 第五批
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/75eb43a6060651bded303d3487e51c737b30a94e
+- config: `005,009,111`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 005 | average_pooling_2d | 通过 | 远程评测 | score `0.004841573846035029`，diff `0.0002421736717224121`，latency `1491622.4 us` |
+| 009 | conv_standard_1D | 通过 | 远程评测 | score `0.0007163597182709895`，diff `3.814697265625e-06`，latency `68122.2 us` |
+| 111 | Masked_select | 通过 | 远程评测 | score `0.0003723705539244521`，diff `0.0`，latency `935358.6 us` |
+
+## 89f0f5a - Basic 第七批
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/89f0f5a4df91c14db222d3b26b0aaa0a40ffbf05
+- config: `138`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 138 | GRU_forward | 失败 | 编译/加载 | undefined symbol，真实签名包含 8 个 Tensor 权重/bias 加 3 个 int |
+
+### 138 失败日志
+
+```text
+ImportError: /root/.cache/torch_extensions/py310_cpu/GRU_forward/GRU_forward.so:
+undefined symbol: _Z9bang_funcN2at6TensorES0_S0_S0_S0_S0_S0_S0_S0_iii
+```
+
+失败原因判断：远程 wrapper 实际调用签名为：
+
+```cpp
+torch::Tensor bang_func(
+    torch::Tensor x,
+    torch::Tensor weight_ih_l0,
+    torch::Tensor weight_hh_l0,
+    torch::Tensor bias_ih_l0,
+    torch::Tensor bias_hh_l0,
+    torch::Tensor weight_ih_l1,
+    torch::Tensor weight_hh_l1,
+    torch::Tensor bias_ih_l1,
+    torch::Tensor bias_hh_l1,
+    int input_size,
+    int hidden_size,
+    int num_layers);
+```
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
