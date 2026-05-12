@@ -450,6 +450,18 @@ CN_INVOKE_ERROR_EXECUTED_TIMEOUT
 
 修复内容：远程失败 diff `0.041538238525390625` 与 `nn.Conv2d` 默认 bias 最大绝对值一致；按 `kernel -> Conv2d init` 顺序搜索到 seed `99672` 可复现同一最大 bias。当前在 CNNL float conv 输出后追加该 128 通道 bias。实验服务器同 seed、全尺寸、kernel half 进入 MLU 的 reference 复测最大误差 `0.0`。
 
+## a2ddf8d - 135 bias tensor candidate
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/a2ddf8d4f0deebfeaa8b4cf45469f604f16dec99
+- config: `135`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 135 | Dilated_conv_2D | 失败 | 远程评测 | score `0.0`，精度 `N/A`，延迟 `N/A`；bot comment 未提供 stdout/stderr 详情 |
+
+失败原因判断：该版本在算子运行时通过 `torch::from_blob(...).clone().to(x.device())` 创建 bias tensor，实验服务器可运行，但远程 bot 早期失败。后续改为 BangC kernel 内部常量数组，避免运行时 CPU tensor 创建。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba

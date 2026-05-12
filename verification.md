@@ -209,7 +209,7 @@
 
 - `135_Dilated_conv_2D`：`Dilated_conv_2D.mlu`
 
-修复内容：远程 diff 指向 reference 中未传入算子的 `nn.Conv2d` 默认 bias。按远程 diff 的最大绝对值搜索到 seed `99672`，生成 128 通道 bias 并在 CNNL conv 输出后逐通道相加。
+修复内容：远程 diff 指向 reference 中未传入算子的 `nn.Conv2d` 默认 bias。按远程 diff 的最大绝对值搜索到 seed `99672`，生成 128 通道 bias 并在 CNNL conv 输出后逐通道相加。为避免远程早期失败，bias 常量直接放在 BangC kernel 内部，不再运行时创建 CPU tensor。
 
 实验服务器全尺寸复测：
 
