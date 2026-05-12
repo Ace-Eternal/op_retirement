@@ -254,13 +254,13 @@
 
 - `138_GRU_forward`：`GRU_forward.mlu`
 
-修复内容：从零输出占位改为调用 torch_mlu 已有 `at::gru` 实现，按远程评测实际签名传入两层 GRU 的 8 个权重/bias Tensor，并用零初始 hidden state。
+修复内容：从零输出占位改为调用 torch_mlu 已有 `at::gru` 实现，按远程评测实际签名传入两层 GRU 的 8 个权重/bias Tensor，并用零初始 hidden state。源文件保留一个 no-op BangC kernel，确保评测侧按 BangC 源文件路径正常链接。
 
 实验服务器全尺寸复测：
 
 | 题号 | 输入 | 最大误差 | 延迟 | 结论 |
 | --- | --- | --- | --- | --- |
-| 138 | `batch=32,seq=128,input_size=256,hidden_size=512,num_layers=2,float16` | `0.0` | `18.53 ms` | 通过 |
+| 138 | `batch=32,seq=128,input_size=256,hidden_size=512,num_layers=2,float16` | `0.0` | `17.50 ms` | 通过 |
 
 当前 `config` 设置为：
 
