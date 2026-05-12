@@ -350,6 +350,24 @@ CN_INVOKE_ERROR_EXECUTED_TIMEOUT
 
 修复内容：将朴素逐元素 BMM 改为 `__bang_matmul` 分块实现；half 输入先转换为 float，右矩阵按 `__bang_matmul` 要求整理成 WRAM column-major 布局。实验服务器使用题目全尺寸 `batch=128,m=512,k=1024,n=2048` 复测，第二次算子耗时约 `139036.0 ms`，小切片最大误差 `3.4332275390625e-05`。
 
+## 8f0f52c - 004 BMM 修复
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/8f0f52ccb338e497f41c5e94ee5e20d14f9cd85b
+- config: `004`
+- 评论状态：已通过 GitHub REST API 读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 004 | batched_matrix_multiplication | 通过 | 远程评测 | score `0.005610945045997995`，diff `0.0001678466796875`，latency `2537023.6 us` |
+
+## 135 修复候选本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 135 | Dilated_conv_2D | 待提交修复 | 全尺寸通过 | 未提交无评论 | 待提交 |
+
+修复内容：改用 CNNL convolution forward。输入从 NCHW 转为 NHWC，权重从 OIHW 转为 OHWI，CNNL 输出 half NHWC 后再转回 NCHW。实验服务器题目全尺寸 `batch=16,C=64,H=W=128,out_C=128,k=3,dilation=2,padding=2` 复测，耗时约 `2.95 ms`，参考切片最大误差 `0.0`。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
