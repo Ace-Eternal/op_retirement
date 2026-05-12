@@ -1,6 +1,7 @@
 #include <bang.h>
 #include <torch/extension.h>
 #include <cnrt.h>
+#include "framework/core/MLUStream.h"
 
 #define CHUNK_SIZE 4096
 

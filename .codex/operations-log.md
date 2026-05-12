@@ -16,3 +16,7 @@
    - 对空张量直接返回空输出。
    - 将 `negative_slope` 显式转换为 `float` 传入 kernel。
 5. 检查本地编译工具：`cncc` 与 `mlucc` 均不可用，因此无法在本机完成 BangC 编译验证。
+6. 通过 SSH 连接实验服务器 `paas.extrotec.com:30399`，确认 `/usr/local/neuware/bin/cncc` 可用，版本为 `cncc v4.15.5 clang version 11.1.0`。
+7. 设置远端环境变量 `NEUWARE_HOME`、`PATH`、`LD_LIBRARY_PATH` 并启用 `/torch/venv3/pytorch`，确认 `torch_mlu 1.24.1-torch2.5.0` 且 `torch.mlu.is_available()` 为 `True`。
+8. 首次远端编译发现 `torch_mlu::getCurMLUStream()` 未声明，定位到头文件 `framework/core/MLUStream.h` 并补充 include。
+9. 重新远端编译 `LeakyReLU.mlu` 成功；使用临时 `binding.cpp` 执行 `[16, 16384]` 随机输入和边界样例测试，最大绝对误差均为 `0.0`。
