@@ -302,6 +302,35 @@ torch::Tensor bang_func(
 
 失败原因判断：本地全尺寸验证使用 float32 输入通过，但远程很可能按题目 dtype 使用 half 输入路径；当前 half 路径虽然 Kahan 累加，但输出 cast 回 half，导致误差约 `0.25`。下一步将 half 输入路径输出改为 float32。
 
+## 5e79043 - Basic 第六批
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/5e79043321368d9a7a2d3ad124491604a593c017
+- config: `004,012,135`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 004 | batched_matrix_multiplication | 失败 | 运行超时 | `CN_INVOKE_ERROR_EXECUTED_TIMEOUT` |
+| 012 | conv_transposed_2D__asymmetric_input__square_kernel | 未确认 | 未执行/无详细结果 | 被 004 超时阻塞，仅显示失败 |
+| 135 | Dilated_conv_2D | 未确认 | 未执行/无详细结果 | 被 004 超时阻塞，仅显示失败 |
+
+### 004 失败日志
+
+```text
+CN_INVOKE_ERROR_EXECUTED_TIMEOUT
+[RUNTIME ERROR] BangC 推理失败: CNRT error: failed to call the driver-api function.
+```
+
+## 111bd77 - 023 精度修复第二次
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/111bd772a17ee08c25e7245d05abb769e2a22b4e
+- config: `023`
+- 评论状态：已通过 GitHub REST API 从实验服务器出口读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 023 | Matrix_vector_multiplication_ | 通过 | 远程评测 | score `0.0019347441444191025`，diff `0.000244140625`，latency `484922.0 us` |
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba
