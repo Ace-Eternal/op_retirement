@@ -368,6 +368,18 @@ CN_INVOKE_ERROR_EXECUTED_TIMEOUT
 
 修复内容：改用 CNNL convolution forward。输入从 NCHW 转为 NHWC，权重从 OIHW 转为 OHWI，CNNL 输出 half NHWC 后再转回 NCHW。实验服务器题目全尺寸 `batch=16,C=64,H=W=128,out_C=128,k=3,dilation=2,padding=2` 复测，耗时约 `2.95 ms`，参考切片最大误差 `0.0`。
 
+## 7481d4b - 135 CNNL half 第一次
+
+- commit: https://github.com/Ace-Eternal/op_retirement/commit/7481d4b6324a8db3c9ee2ea5227061e749d32841
+- config: `135`
+- 评论状态：已通过 GitHub REST API 读取到 `kernel-competition-bot` 评论。
+
+| 题号 | 题目 | 结果 | 阶段 | 摘要 |
+| --- | --- | --- | --- | --- |
+| 135 | Dilated_conv_2D | 失败 | 远程评测 | score `0.0`，diff `0.0722503662109375`，latency `1258.0 us` |
+
+失败原因判断：CNNL half-half-half 路径与 MLU half conv 对齐，但远程参考按 float 精度计算最大绝对误差，half 输出累计误差达到 `0.07225`。已改为输入和权重转 float，使用 CNNL float-float-float 路径输出 float；实验服务器全尺寸复测耗时约 `9.84 ms`，参考切片最大误差 `0.0`。
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba

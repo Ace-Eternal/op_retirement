@@ -8,12 +8,12 @@
 
 torch::Tensor bang_func(torch::Tensor x, torch::Tensor kernel, int in_channels, int out_channels, int kernel_size, int dilation, int padding) {
     TORCH_CHECK(x.scalar_type() == at::ScalarType::Half, "Dilated_conv_2D basic task expects float16");
-    auto input = x.permute({0, 2, 3, 1}).contiguous();
-    auto weight = kernel.permute({0, 2, 3, 1}).contiguous();
+    auto input = x.permute({0, 2, 3, 1}).contiguous().to(torch::kFloat);
+    auto weight = kernel.permute({0, 2, 3, 1}).contiguous().to(torch::kFloat);
     int batch = x.size(0), h = x.size(2), w = x.size(3);
     int out_h = h + 2 * padding - dilation * (kernel_size - 1);
     int out_w = w + 2 * padding - dilation * (kernel_size - 1);
-    auto output_nhwc = torch::empty({batch, out_h, out_w, out_channels}, x.options());
+    auto output_nhwc = torch::empty({batch, out_h, out_w, out_channels}, x.options().dtype(torch::kFloat));
 
     cnnlHandle_t handle;
     CHECK_CNNL(cnnlCreate(&handle));
@@ -30,9 +30,9 @@ torch::Tensor bang_func(torch::Tensor x, torch::Tensor kernel, int in_channels, 
     int x_dims[4] = {batch, h, w, in_channels};
     int w_dims[4] = {out_channels, kernel_size, kernel_size, in_channels};
     int y_dims[4] = {batch, out_h, out_w, out_channels};
-    CHECK_CNNL(cnnlSetTensorDescriptor(x_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_HALF, 4, x_dims));
-    CHECK_CNNL(cnnlSetTensorDescriptor(w_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_HALF, 4, w_dims));
-    CHECK_CNNL(cnnlSetTensorDescriptor(y_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_HALF, 4, y_dims));
+    CHECK_CNNL(cnnlSetTensorDescriptor(x_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_FLOAT, 4, x_dims));
+    CHECK_CNNL(cnnlSetTensorDescriptor(w_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_FLOAT, 4, w_dims));
+    CHECK_CNNL(cnnlSetTensorDescriptor(y_desc, CNNL_LAYOUT_NHWC, CNNL_DTYPE_FLOAT, 4, y_dims));
 
     int pads[4] = {padding, padding, padding, padding};
     int strides[2] = {1, 1};
@@ -51,11 +51,11 @@ torch::Tensor bang_func(torch::Tensor x, torch::Tensor kernel, int in_channels, 
     float beta = 0.0f;
     CHECK_CNNL(cnnlConvolutionForward(
         handle, conv_desc, algo, &alpha,
-        x_desc, input.data_ptr<at::Half>(),
-        w_desc, weight.data_ptr<at::Half>(),
+        x_desc, input.data_ptr<float>(),
+        w_desc, weight.data_ptr<float>(),
         nullptr, nullptr,
         workspace, workspace_size, &beta,
-        y_desc, output_nhwc.data_ptr<at::Half>()));
+        y_desc, output_nhwc.data_ptr<float>()));
 
     if (workspace != nullptr) {
         cnrtFree(workspace);
