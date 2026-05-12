@@ -199,6 +199,22 @@ cnrtInvokeKernel: Launch kernel failed.
 | 111 | `torch.float16` | shape 一致，最大误差 `0.0` | 通过 |
 | 111 | `torch.float32` | shape 一致，最大误差 `0.0` | 通过 |
 
+## Basic 第六批本地验证
+
+| 题号 | 题目 | 提交状态 | 实验服务器验证 | 远程评测评论 | 当前结论 |
+| --- | --- | --- | --- | --- | --- |
+| 004 | batched_matrix_multiplication | 待提交 | 小尺寸通过 | 未提交无评论 | 待提交 |
+| 012 | conv_transposed_2D__asymmetric_input__square_kernel | 待提交 | 小尺寸通过 | 未提交无评论 | 待提交 |
+| 135 | Dilated_conv_2D | 待提交 | 小尺寸通过 | 未提交无评论 | 待提交 |
+
+实验服务器小尺寸复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 004 | `torch.float16` 输入，float32 输出 | 最大误差 `0.0` | 通过 |
+| 012 | `torch.float16` 输入，float32 输出 | 最大误差 `9.5367431640625e-07` | 通过 |
+| 135 | `torch.float16` 输入，float32 输出 | 最大误差 `0.0` | 通过 |
+
 ## 43a4d81 - Basic 第四批
 
 - commit: https://github.com/Ace-Eternal/op_retirement/commit/43a4d81194c7125f30cada68775c11e8d2f93fba

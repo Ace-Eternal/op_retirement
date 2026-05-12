@@ -164,3 +164,27 @@
 009
 111
 ```
+
+## Basic 第六批验证
+
+本批完成题目：
+
+- `004_batched_matrix_multiplication`：`batched_matrix_multiplication.mlu`
+- `012_conv_transposed_2D__asymmetric_input__square_kernel`：`conv_transposed_2D__asymmetric_input__square_kernel.mlu`
+- `135_Dilated_conv_2D`：`Dilated_conv_2D.mlu`
+
+实验服务器小尺寸复测结果：
+
+| 题号 | dtype | 指标 | 结论 |
+| --- | --- | --- | --- |
+| 004 | `torch.float16` 输入，float32 输出 | 最大误差 `0.0` | 通过 |
+| 012 | `torch.float16` 输入，float32 输出 | 最大误差 `9.5367431640625e-07` | 通过 |
+| 135 | `torch.float16` 输入，float32 输出 | 最大误差 `0.0` | 通过 |
+
+当前 `config` 设置为：
+
+```text
+004
+012
+135
+```
